@@ -1,4 +1,5 @@
 using System;
+using BepInEx.Configuration;
 using EFT.Quests;
 using EFT.UI;
 using HarmonyLib;
@@ -53,11 +54,14 @@ internal sealed class SkipperModule : ClientModule
 
 internal sealed class SkipButtonController : MonoBehaviour
 {
+    private const float ShortcutReleaseGrace = 0.1f;
+
     private DefaultUIButton _button;
     private Quest _quest;
     private Condition _condition;
     private QuestController _questController;
     private bool _skipInProgress;
+    private float _lastShortcutHeldAt = float.NegativeInfinity;
 
     internal void Bind(
         QuestObjectiveView view,
@@ -113,18 +117,45 @@ internal sealed class SkipButtonController : MonoBehaviour
             return;
         }
 
+        var shortcutHeld = IsShortcutHeld(ComfortKitPlugin.Settings.SkipperShortcut.Value);
+        if (shortcutHeld)
+        {
+            _lastShortcutHeldAt = Time.unscaledTime;
+        }
+
+        var shortcutVisible = shortcutHeld
+            || Time.unscaledTime - _lastShortcutHeldAt <= ShortcutReleaseGrace;
+
         var visible =
             ComfortKitPlugin.Settings.EnableSkipper.Value
             && !_skipInProgress
             && _quest != null
             && _condition != null
             && _questController != null
-            && ComfortKitPlugin.Settings.SkipperShortcut.Value.IsPressed();
+            && shortcutVisible;
 
         if (_button.gameObject.activeSelf != visible)
         {
             _button.gameObject.SetActive(visible);
         }
+    }
+
+    private static bool IsShortcutHeld(KeyboardShortcut shortcut)
+    {
+        if (shortcut.MainKey == KeyCode.None || !Input.GetKey(shortcut.MainKey))
+        {
+            return false;
+        }
+
+        foreach (var modifier in shortcut.Modifiers)
+        {
+            if (!Input.GetKey(modifier))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void SkipCurrentCondition()
@@ -171,4 +202,3 @@ internal sealed class SkipButtonController : MonoBehaviour
         }
     }
 }
-

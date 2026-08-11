@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Text;
 using Comfort.Common;
 using EFT;
 using EFT.UI.BattleTimer;
@@ -17,6 +19,7 @@ internal sealed class PauseModule : ClientModule
     protected override void Enable()
     {
         Patch(_harmony, typeof(GameTimerStartPatch));
+        Patch(_harmony, typeof(TimerPanelShowPatch));
         Patch(_harmony, typeof(WorldTickPatch));
         Patch(_harmony, typeof(OtherWorldTickPatch));
         Patch(_harmony, typeof(EndByTimerPatch));
@@ -40,6 +43,16 @@ internal sealed class PauseModule : ClientModule
         if (ComfortKitPlugin.Settings.PauseShortcut.Value.IsDown())
         {
             RaidPauseController.Toggle();
+        }
+    }
+
+    [HarmonyPatch(typeof(TimerPanel), nameof(TimerPanel.Show), typeof(DateTime), typeof(StringBuilder))]
+    private static class TimerPanelShowPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(TimerPanel __instance)
+        {
+            RaidPauseController.RegisterTimerPanel(__instance);
         }
     }
 
@@ -117,6 +130,9 @@ internal sealed class PauseModule : ClientModule
 internal static class RaidPauseController
 {
     private static readonly HashSet<GameTimer> Timers = new HashSet<GameTimer>();
+    private static readonly HashSet<TimerPanel> TimerPanels = new HashSet<TimerPanel>();
+    private static readonly FieldInfo TimerPanelDateTimeField =
+        AccessTools.Field(typeof(TimerPanel), "_dateTime");
     private static DateTime _pausedAt;
     private static float _previousTimeScale = 1f;
     private static GameDateTime _lockedGameDateTime;
@@ -129,6 +145,14 @@ internal static class RaidPauseController
         if (timer != null)
         {
             Timers.Add(timer);
+        }
+    }
+
+    internal static void RegisterTimerPanel(TimerPanel timerPanel)
+    {
+        if (timerPanel != null)
+        {
+            TimerPanels.Add(timerPanel);
         }
     }
 
@@ -167,6 +191,7 @@ internal static class RaidPauseController
 
         var pausedDuration = DateTime.Now - _pausedAt;
         ShiftTimers(pausedDuration);
+        ShiftTimerPanels(pausedDuration);
 
         try
         {
@@ -252,5 +277,28 @@ internal static class RaidPauseController
             }
         }
     }
-}
 
+    private static void ShiftTimerPanels(TimeSpan duration)
+    {
+        TimerPanels.RemoveWhere(timerPanel => timerPanel == null);
+
+        if (TimerPanelDateTimeField == null)
+        {
+            ComfortKitPlugin.Log.LogWarning("Raid timer display could not be adjusted after pausing.");
+            return;
+        }
+
+        foreach (var timerPanel in TimerPanels)
+        {
+            try
+            {
+                var endTime = (DateTime)TimerPanelDateTimeField.GetValue(timerPanel);
+                TimerPanelDateTimeField.SetValue(timerPanel, endTime.Add(duration));
+            }
+            catch (Exception exception)
+            {
+                ComfortKitPlugin.Log.LogWarning($"Raid timer display adjustment failed: {exception.Message}");
+            }
+        }
+    }
+}

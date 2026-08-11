@@ -25,7 +25,7 @@ public sealed class ComfortKitPlugin : BaseUnityPlugin
     private const string ArmoryPluginGuid = "com.salco.salcosarmory";
     internal const string PluginGuid = "com.salco.comfortkit";
     internal const string PluginName = "Salco's Comfort Kit";
-    internal const string PluginVersion = "0.3.0";
+    internal const string PluginVersion = "0.3.1";
 
     internal static ManualLogSource Log { get; private set; }
     internal static ComfortKitConfig Settings { get; private set; }
